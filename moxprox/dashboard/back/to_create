@@ -1,0 +1,53 @@
+UUID 
+MAC-Address Unassigned 10-00-00-01-00 to EF-FF-FF-FF-FF
+Memory
+vcpu
+iso
+
+
+
+<domain type='kvm'>
+    <name>{name}</name>
+    <uuid>{uuid}</uuid>
+    <memory>{memory}</memory>
+    <vcpu>{vcpu}</vcpu>
+    <os>
+        <type arch='x86_64' machine='pc-q35-7.2'>hvm</type>
+        <boot dev='hd'/>
+    </os>
+    <clock offset='utc'>
+        <timer name='rtc' tickpolicy='catchup'/>
+        <timer name='pit' tickpolicy='delay'/>
+        <timer name='hpet' present='no'/>
+    </clock>
+    <on_poweroff>destroy</on_poweroff>
+    <on_reboot>restart</on_reboot>
+    <on_crash>destroy</on_crash>
+    <devices>
+        <emulator>/usr/bin/qemu-system-x86_64</emulator>
+        <disk type='file' device='disk'>
+            <driver name='qemu' type='qcow2'/>
+            <source file='/nfs/vm/{name}.qcow2'/>
+            <target dev='vda' bus='virtio'/>
+        </disk>
+        <disk type='file' device='cdrom'>
+            <source file='{iso_path}'/>
+            <target dev='hdc' bus='ide'/>
+        </disk>
+        <interface type='bridge'>
+            <mac address='{mac-adress}'/>
+            <source bridge='br0'/>
+            <model type='virtio'/>
+            <address type='pci' domain='0x0000' bus='0x01' slot='0x00' function='0x0'/>
+        </interface>
+        <input type='mouse' bus='ps2'/>
+        <input type='keyboard' bus='ps2'/>
+        <graphics type='spice' port='5900'>
+            <listen type='address'/>
+            <image compression='off'/>
+        </graphics>
+    <devices>
+<domain>
+
+
+
