@@ -135,29 +135,103 @@
             
             // Générer le contenu dynamique pour la VM
             vmContent.innerHTML = `
-                <h6>Détails de ${vmName}</h6>
-                <p><strong>UUID:</strong> ${vmUUID}</p>
-                <p><strong>Status:</strong> ${status}</p>
-                <p><strong>RAM Utilisée:</strong> ${ramUsed/1024} MB / <strong>RAM Maximale:</strong> ${ramMax/1024} MB</p>
-                <p><strong>Nombre de vCPUs:</strong> ${vcpus}</p>
-                <p><strong>VNC Port:</strong> ${vncport}</p>
+                <h6 id="vm-name"   >Détails de ${vmName}</h6>
+                <div  ><strong>UUID:</strong><div id="vm-uuid">${vmUUID}</div></div></br>
+                <p  id="vm-status" ><strong>Status:</strong> ${status}</p>
+                <p  id="vm-ramused"><strong>RAM Utilisée:</strong> ${ramUsed/1024} MB / <strong>RAM Maximale:</strong> ${ramMax/1024} MB</p>
+                <p  id="vm-vcpus"  ><strong>Nombre de vCPUs:</strong> ${vcpus}</p>
+                <p  id="vm-vncport"><strong>VNC Port:</strong> ${vncport}</p>
                 
                 <div>
-                    <button onclick="manageVM('${vmUUID}', 'start')" class="btn btn-success">Démarrer</button>
-                    <button onclick="manageVM('${vmUUID}', 'stop')" class="btn btn-danger">Arrêter</button>
-                    <button onclick="manageVM('${vmUUID}', 'restart')" class="btn btn-warning">Redémarrer</button>
+                    <button onclick="manageVM('${vmUUID}', 'create_domain')" class="btn btn-success">Démarrer</button>
+                    <button onclick="manageVM('${vmUUID}', 'destroy_domain')" class="btn btn-danger">Arrêter</button>
+                    <button onclick="manageVM('${vmUUID}', 'restart_domain_unblock')" class="btn btn-warning">Redémarrer</button>
                 </div>
                 
                 <div id="console" class="mt-4">
                     <h6>Console</h6>
-                    <iframe id="spice-console" src="http://${node_ip}:${domain_proxy_port}/vnc.html" style="width: 100%; height: 500px; border: none;"></iframe>
+                    <iframe id="vnc-console" src="http://${node_ip}:${domain_proxy_port}/vnc.html" style="width: 100%; height: 500px; border: none;"></iframe>
                 </div>
             `;
         }
-
-        function manageVM(uuid, action) {
-            alert(`Action "${action}" envoyée pour la VM avec UUID : ${uuid}`);
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    // Does this cookie string begin with the name we want?
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
         }
+
+        function manageVM(uuid_to_act, action) {
+            if (action != 'create_domain' && action != 'restart_domain_unblock' && action != 'destroy_domain')
+            {
+                alert(`Action invalide:"${action}"`);
+            }
+
+            let url = `/dashboard/manage_domain/`;
+            const token = getCookie('csrftoken');
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': token
+                },
+                body: JSON.stringify({ uuid: uuid_to_act, action: action  }),
+            })
+            .catch(error => {
+                console.error(`Erreur lors de l'action "${action}":`, error);
+            });
+        }
+    </script>
+    <script>
+        function fetchStatus() {
+        fetch('/dashboard/refresh/') 
+            .then(response => response.json())
+            .then(data => {
+                updateUI(data);
+            })
+            .catch(error => console.error('Erreur lors de la récupération des données:', error));
+    }
+
+    function updateUI(data) {
+        console.log(data)
+
+        data.nodes.forEach(node => {
+            node.domains.forEach(domain => {
+                const uuid    = document.getElementById('vm-uuid');  
+                if ( uuid.innerText == domain.uuid )
+                {
+                    const name    = document.getElementById('vm-name');   
+                    const status  = document.getElementById('vm-status'); 
+                    const ramused = document.getElementById('vm-ramused');
+                    const vcpus   = document.getElementById('vm-vcpus');  
+                    const vncport = document.getElementById('vm-vncport');
+                    const iframevnc = document.getElementById('vnc-console');
+                    
+                    name   .innerHTML = `<h6 id="vm-name"   >Détails de ${domain.name}</h6>`,
+                    status .innerHTML = `<p  id="vm-status" ><strong>Status:</strong> ${domain.status}</p>`,
+                    ramused.innerHTML = `<p  id="vm-ramused"><strong>RAM Utilisée:</strong> ${domain.current_ram/1024} MB / <strong>RAM Maximale:</strong> ${domain.max_ram/1024} MB</p>`,
+                    vcpus  .innerHTML = `<p  id="vm-vcpus"  ><strong>Nombre de vCPUs:</strong> ${domain.vcpus}</p>`,
+                    vncport.innerHTML = `<p  id="vm-vncport"><strong>VNC Port:</strong> ${domain.vnc_port}</p>`
+                
+                    if (!(iframevnc.innerHTML.includes(`:${domain.proxy_port}`)))
+                    {
+                        iframevnc.innerHTML = `<iframe id="vnc-console" src="http://${node.ip}:${domain.proxy_port}/vnc.html" style="width: 100%; height: 500px; border: none;"></iframe>`
+                    }
+                } 
+            });
+        });
+    }
+
+    setInterval(fetchStatus, 10000);
     </script>
   </body>
 </html>

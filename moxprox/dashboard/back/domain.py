@@ -10,31 +10,49 @@ class Domain:
 
     def __init__(self, vir_domain=None, conn=None):
         self.virtuel_domain = vir_domain
+        print("before name")
         self.name           = self.virtuel_domain.name()
         self.conn           = conn
+        print("before threading")
         self.status_event   = threading.Event()
+        print("before getting uuid")
         self.uuid           = self.virtuel_domain.UUIDString()
+        print("before getting vnc")
         self.vnc_port       = self.get_vnc_port()
-        self.proxy_port     = Domain.determine_proxy_port()
+        print("before getting proxy")
+        self.proxy_port     = Domain.determine_proxy_port(self.vnc_port)
+        print("end constructor")
 
     @staticmethod
-    def determine_proxy_port():
-        current_try_port = Domain.proxy_port+1
-        is_okay = False
+    def determine_proxy_port(vnc_port):
+        if vnc_port != -1:
+            print(vnc_port)
+            print("before for proxy loop")
+            for key in Domain.websockify_pid.keys():
+                print(key)
+                if Domain.websockify_pid[key]["vnc"] == vnc_port:
+                    print("before return")
+                    return key
 
-        while not is_okay:
-            cmd = f"netstat -tn |grep {current_try_port}"
-            netstat = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-            output = str(netstat.communicate()[0])
-            if f"{current_try_port}" not in output:
-                is_okay = True
+            print("after for proxy loop")
+            
+            is_okay = False
+            while not is_okay:
+                current_try_port = Domain.proxy_port+1
+                #Domain.proxy_port = current_try_port
 
-        return current_try_port
+                cmd = f"netstat -tn |grep {current_try_port}"
+                netstat = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+                output = str(netstat.communicate()[0])
+                if f"{current_try_port}" not in str(output):
+                    is_okay = True
+
+            return current_try_port
 
     def update_domain(self):
         self.virtuel_domain = self.conn.lookupByName(self.name)
 
-    def get_status(self) -> bool:
+    def get_status(self):
         if self.virtuel_domain is None:
             self.update_domain()
 
@@ -43,15 +61,25 @@ class Domain:
         
         return "Indisponible"
 
+    def get_status_bool(self):
+        if self.virtuel_domain is None:
+            self.update_domain()
+
+        if self.virtuel_domain is not None:
+            return self.virtuel_domain.isActive()
+
     def get_ram_info(self):
-        if self.get_status():
+        if self.get_status_bool():
             return (self.virtuel_domain.memoryStats())["rss"]
         else:
             return 0
 
     def get_id(self):
-        return (self.virtuel_domain.ID())
-
+        if self.virtuel_domain.isActive():
+            return (self.virtuel_domain.ID())
+        else:
+            return -1
+            
     def get_max_memory(self):
         return (self.virtuel_domain.maxMemory())
     
@@ -59,48 +87,50 @@ class Domain:
         return self.virtuel_domain.maxVcpus()
     
     def shutdown_domain(self):
-        if self.get_status():
+        if self.get_status_bool():
             self.virtuel_domain.shutdown()
 
     def destroy_domain(self):
-        if self.get_status():
+        if self.get_status_bool():
             self.virtuel_domain.destroy()
 
     def create_domain(self):
-        if not self.get_status():
+        if not self.get_status_bool():
             self.virtuel_domain.create()
 
     def restart_domain_unblock(self):
         self.status_event.clear()
         try:
             self.virtuel_domain.destroy()
-            while self.get_status():
+            while self.get_status_bool():
                 time.sleep(0.5)
             
             self.virtuel_domain.create()
 
-            while not self.get_status(): 
+            while not self.get_status_bool(): 
                 time.sleep(0.5)
             self.status_event.set()
         except Exception as e:
             self.status_event.set()
 
     def get_vnc_port(self):
-        try:
-            result = subprocess.run(
-                ["virsh" f" vncdisplay {self.uuid}"], capture_output=True, text=True, shell=True
-            )
+        if self.get_status_bool:
+            try:
+                result = subprocess.run(
+                    ["virsh" f" vncdisplay {self.uuid}"], capture_output=True, text=True, shell=True
+                )
 
-            vnc_port = None
-            stdout   = ((result.stdout.splitlines()[0]).split(":"))
-            if len(stdout) > 1:
-                vnc_port = int(stdout[1]) + 5900
-            
-            return vnc_port
+                vnc_port = None
+                stdout   = ((result.stdout.splitlines()[0]).split(":"))
+                if len(stdout) > 1:
+                    vnc_port = int(stdout[1]) + 5900
+                
+                return vnc_port
 
-        except subprocess.CalledProcessError as e:
-            print(f"Erreur lors de l'exécution de la commande : {e}")
-            return None
+            except subprocess.CalledProcessError as e:
+                print(f"Erreur lors de l'exécution de la commande : {e}")
+                return -1
+        return -1
 
 
     def restart_domain(self):

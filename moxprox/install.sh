@@ -23,6 +23,8 @@ echo "192.168.20.24:/srv/kvmnfsshare    /srv/kvmnfsshare nfs rw,hard,intr,_netde
 systemctl daemon-reload
 mount -a
 
+echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
+
 # Paramètres
 DATACENTER_ID="$1"
 NODE_IP="$2"
