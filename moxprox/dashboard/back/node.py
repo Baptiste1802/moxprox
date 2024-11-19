@@ -9,6 +9,10 @@ import platform
 from websockify import WebSocketProxy
 from multiprocessing import Process
 import time
+import uuid
+import random
+import os
+import subprocess
 
 class Node:
     def __init__(self, conn):
@@ -55,11 +59,6 @@ class Node:
                         print("Terminate websockify didn't work properly")
 
                     Domain.websockify_pid.pop(f"{local_domain.proxy_port}")
-
-                # Domain.websockify_pid[f"{local_domain.proxy_port}"] = dict()
-                # Domain.websockify_pid[f"{local_domain.proxy_port}"]["vnc"  ] = local_domain.vnc_port
-                # Domain.websockify_pid[f"{local_domain.proxy_port}"]["proxy"] = Process(target=Node.run_websockify, args=(local_domain.vnc_port, local_domain.proxy_port, "0.0.0.0"))
-                # Domain.websockify_pid[f"{local_domain.proxy_port}"]["proxy"].start()
             
         remote_current_domain = DashboardDomain.objects.filter(node_id=remote_current_node.id)
         # Suppression des domaines en base et gestion des proxy
@@ -70,6 +69,7 @@ class Node:
                     delete = False
             if delete:
                 remote_domain.delete()
+                print("DELETE")
                 Domain.websockify_pid[f"{remote_domain.proxy_port}"]["proxy"].terminate()
                 Domain.websockify_pid.pop(f"{remote_domain.proxy_port}")
 
@@ -89,6 +89,7 @@ class Node:
                             vcpus=local_domain.get_vcpu(),
                             vnc_port=local_domain.get_vnc_port(),
                             proxy_port=local_domain.proxy_port,
+                            mac_address=local_domain.mac_address
                         )
 
         # Mise à jour des proxys pour ceux qui n'ont pas était créer ou supprimer, mais qui n'existe pas
@@ -146,6 +147,7 @@ class Node:
                 if domain.close_domain(id):
                     return True
                 
+
         return False
     
     def destroy_domain(self, id):
@@ -200,3 +202,82 @@ class Node:
                         domain.destroy_domain()
                     case 'restart_domain_unblock':
                         domain.restart_domain_unblock()
+
+    @staticmethod
+    def new_vm(name, node_id, memory, disk_size, vcpus_number):
+
+        mac_address_is_okay = False
+        while not mac_address_is_okay:
+            mac_address = "00:03:00:%02x:%02x:%02x" % (random.randint(0, 255),
+                                                       random.randint(0, 255),
+                                                       random.randint(0, 255))
+            remote_current_domain = DashboardDomain.objects.filter(mac_address=mac_address)
+            if len(remote_current_domain) == 0:
+                mac_address_is_okay = True
+
+        file_exist = True
+        new_uuid   = None
+        memory = memory*1024
+        print(memory)
+        while file_exist:
+            new_uuid = uuid.uuid4()
+            path     = f"/srv/kvmnfsshare/qcow/{str(new_uuid)}.qcow2"
+            file_exist = os.path.isfile(path)
+
+        xmlconfig = Node.generate_xml(name, memory, vcpus_number, new_uuid, mac_address)
+
+        conn = None 
+        try:
+            conn = libvirt.open(f"qemu+ssh://{node_id}/system")
+        except libvirt.libvirtError as e:
+            print(repr(e), file=sys.stderr)
+            return False
+
+        subprocess.run(["qemu-img", "create", "-f", "qcow2", path, f"{disk_size}G"])
+        
+        dom = None
+        try:
+            dom = conn.defineXMLFlags(xmlconfig, 0)
+        except libvirt.libvirtError as e:
+            print("Failed to create a domain from an XML definition", file=sys.stderr)
+            return False
+        
+        conn.close()
+        return True
+
+    @staticmethod
+    def generate_xml(name, memory, vcpus_number, new_uuid, mac_address):
+        output = f"""
+        <domain type='qemu'>
+            <name>{name}</name>
+            <uuid>{new_uuid}</uuid>
+            <memory>{memory}</memory>
+            <currentMemory>{memory}</currentMemory>
+            <vcpu>{vcpus_number}</vcpu>
+            <os>
+                <type arch='i686' machine='pc'>hvm</type>
+                <boot dev='cdrom'/>
+            </os>
+            <devices>
+                <emulator>/usr/bin/qemu-system-x86_64</emulator>
+                <disk type='file' device='cdrom'>
+                    <source file='/srv/kvmnfsshare/iso/debian-12.8.0-amd64-netinst.iso'/>
+                    <target dev='hdc'/>
+                    <readonly/>
+                </disk>
+                <disk type='file' device='disk'>
+                    <driver name='qemu' type='qcow2'/>
+                    <source file='/srv/kvmnfsshare/qcow/{new_uuid}.qcow2'/>
+                    <target dev='vda' bus='virtio'/>
+                </disk>
+                <interface type='bridge'>
+                    <mac address='{mac_address}'/>
+                    <source bridge='br0'/>
+                    <model type='virtio'/>
+                </interface>
+                <graphics type='vnc' port='-1' autoport='yes'/>
+            </devices>
+        </domain>"""
+
+        return output
+

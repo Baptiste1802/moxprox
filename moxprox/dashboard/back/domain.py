@@ -21,7 +21,8 @@ class Domain:
         self.vnc_port       = self.get_vnc_port()
         print("before getting proxy")
         self.proxy_port     = Domain.determine_proxy_port(self.vnc_port)
-        print("end constructor")
+        print("before mac")
+        self.mac_address    = self.get_mac_address()
 
     @staticmethod
     def determine_proxy_port(vnc_port):
@@ -39,7 +40,7 @@ class Domain:
             is_okay = False
             while not is_okay:
                 current_try_port = Domain.proxy_port+1
-                #Domain.proxy_port = current_try_port
+                Domain.proxy_port = current_try_port
 
                 cmd = f"netstat -tn |grep {current_try_port}"
                 netstat = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -148,6 +149,23 @@ class Domain:
             return int(vcpu_elements[0].firstChild.nodeValue)
         else:
             raise Exception("Impossible de récupérer la valeur de la balise <vcpu>")
+
+    def get_mac_address(self):
+        raw_xml = self.virtuel_domain.XMLDesc(0)
+        xml = minidom.parseString(raw_xml)
+        try:
+            interfaces = xml.getElementsByTagName("interface")
+            for interface in interfaces:
+                mac_elements = interface.getElementsByTagName("mac")
+                if mac_elements:
+                    mac_address = mac_elements[0].getAttribute("address")
+                    if mac_address:
+                        return mac_address
+            return None
+        except Exception as e:
+            print(f"Erreur lors de l'analyse du XML : {e}")
+            return None
+
 
     def print_disk(self):
         raw_xml = self.virtuel_domain.XMLDesc(0)

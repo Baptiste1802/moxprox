@@ -1,4 +1,6 @@
 #!/bin/sh
+git clone https://github.com/Baptiste1802/moxprox.git
+
 # Vérification du nombre d'arguments
 if [ "$#" -ne 4 ]; then
     echo "Usage: $0 <datacenter_id> <node_ip> <node_name_dns> <remote_db_ip>"
@@ -16,6 +18,8 @@ apt-get update
 apt -y install net-tools
 apt -y install novnc
 apt -y install nfs-common
+apt -y install mariadb-server
+
 apt-get -y install python3-dev default-libmysqlclient-dev build-essential pkg-config
 
 mkdir /srv/kvmnfsshare
@@ -33,6 +37,8 @@ REMOTE_DB_IP="$4"
 DB_USER="admin"
 DB_PASS="admin"
 DB_NAME="Cloud"
+
+mysql_secure_installation
 
 # Insérer l'entrée dans la base de données distante
 mysql -h "$REMOTE_DB_IP" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" <<EOF
@@ -59,6 +65,7 @@ export MYSQLCLIENT_CFLAGS=`pkg-config mysqlclient --cflags`
 export MYSQLCLIENT_LDFLAGS=`pkg-config mysqlclient --libs`
 pip install mysqlclient
 
+cd moxprox/moxprox
 rm -rf ./dashboard/migrations
 python manage.py inspectdb > ./dashboard/models.py
 python manage.py makemigrations dashboard

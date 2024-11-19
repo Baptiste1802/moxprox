@@ -5,5 +5,6 @@ from . import views
 urlpatterns = [
     path("", views.index, name="index"),
     path("refresh/", views.refresh, name="refresh"),
-    path("manage_domain/", views.start_domain, name="manage_domain"),
+    path("manage_domain/", views.manage_domain, name="manage_domain"),
+    path("create_vm/", views.create_vm, name="create_vm"),
 ]

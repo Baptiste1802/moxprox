@@ -29,6 +29,7 @@ class DashboardDomain(models.Model):
     vnc_port = models.IntegerField(blank=True, null=True)
     proxy_port = models.IntegerField(blank=True, null=True)
     ip = models.CharField(max_length=15)
+    mac_address = models.CharField(db_column='mac-address', max_length=18, blank=True, null=True)  # Field renamed to remove unsuitable characters.
     node = models.ForeignKey('DashboardNode', models.DO_NOTHING, blank=True, null=True)
 
     class Meta:

@@ -15,8 +15,8 @@ def custom_shutdown_handler(signum, frame):
     print("\nSignal d'arrêt reçu. Exécution des tâches de nettoyage...")
     
     try:
-        for web_process in Domain.websockify_pid:
-            web_process.terminate()
+        for key in Domain.websockify_pid.keys:
+            Domain.websockify_pid["proxy"].terminate()
 
         print("Tâches de nettoyage terminées. Arrêt du serveur.")
     except Exception as e:

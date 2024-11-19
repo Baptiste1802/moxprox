@@ -21,6 +21,9 @@
           background-color: #ddd;
           height: 100%;
       }
+      .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
     </style>
   </head>
   <body>
@@ -28,33 +31,96 @@
     <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom">
         <a href="/" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-body-emphasis text-decoration-none">
           <svg class="bi me-2" width="40" height="32"><use xlink:href="#bootstrap"></use></svg>
-          <span class="fs-4">Simple header</span>
+          <span class="fs-4">Welcome to Moxprox - Kind of a better Proxmox</span>
         </a>
         <ul class="nav nav-pills">
-          <li class="nav-item"><a href="#" class="nav-link active" aria-current="page">Home</a></li>
-          <li class="nav-item"><a href="#" class="nav-link">Features</a></li>
-          <li class="nav-item"><a href="#" class="nav-link">Pricing</a></li>
-          <li class="nav-item"><a href="#" class="nav-link"websockify>FAQs</a></li>
-          <li class="nav-item"><a href="#" class="nav-link">About</a></li>
+          <li class="nav-item">
+            <button id="show-form-btn" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createVmModal">
+                Créer une VM
+            </button>
+          </li>
         </ul>
     </header>
+
+    <!-- Formulaire création VM-->
+    <div class="modal fade" id="createVmModal" tabindex="-1" aria-labelledby="createVmModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="createVmModalLabel">Créer une VM</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <form id="vm-form">
+                <div class="mb-3">
+                  <label for="domain-name" class="form-label">Nom de la VM</label>
+                  <input type="text" class="form-control" id="domain-name" placeholder="Entrez le nom de la VM" required>
+                </div>
+                <div class="mb-3">
+                    <label for="domain-memory" class="form-label">RAM</label>
+                    <input type="number" class="form-control" id="domain-memory" placeholder="Entrez la quantité en MB" required>
+                </div>
+                <div class="mb-3">
+                    <label for="domain-size" class="form-label">Espace disque</label>
+                    <input type="number" class="form-control" id="domain-size" placeholder="Entrez la quantité en GB" required>
+                </div>
+                <div class="mb-3">
+                    <label for="domain-vcpus" class="form-label">Nombre de VCPUS</label>
+                    <input type="number" class="form-control" id="domain-vcpus" placeholder="Nombre de VCPUS" required>
+                </div>
+                <div class="mb-3">
+                  <label for="node-select" class="form-label">Hyperviseur</label>
+                  <select class="form-select" id="node-select" required>
+                    {% for node in nodes %}
+                    <option value="{{ node.ip }}">{{ node.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </form>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+              <button type="submit" form="vm-form" class="btn btn-success">Créer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    <div id="loading-popup" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;">
+        <div style="background: white; padding: 20px; border-radius: 10px; text-align: center;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Chargement...</span>
+            </div>
+            <p style="margin-top: 10px;">Veuillez patienter...</p>
+        </div>
+    </div>
 
     <div class="d-flex" style="height: calc(100vh - 80px);">
         <!-- Left Container -->
         <div id="left-container" style="flex: 0 0 30%; background-color: #f8f9fa; padding: 1rem;">
             <h5>DataCenter</h5>
-            <ul class="list-unstyled">
+            <ul class="list-unstyled" id="left-pannel">
                 {% for node in nodes %}
                 <li>
 
-                    <a class="dropdown-item d-flex gap-2 align-items-center" data-bs-toggle="collapse" href="#node-127-0-0-1" role="button" aria-expanded="false" aria-controls="node-127-0-0-1">
+                    <a class="dropdown-item d-flex gap-2 align-items-center" data-bs-toggle="collapse" href="#node-{{ node.name }}" role="button" aria-expanded="false" aria-controls="node-{{ node.name }}">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-square" viewBox="0 0 16 16">
                             <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"/>
                             <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/>
                         </svg>
                         {{ node.name }}
                     </a>
-                    <ul class="collapse list-unstyled ps-5" id="node-127-0-0-1">
+                    <ul class="collapse list-unstyled ps-5" id='node-{{ node.name }}'>
                         {% for domain in domains %}
                         {% if domain.node_id == node.id %}
                         <li>
@@ -66,7 +132,8 @@
                                                                               '{{ domain.vcpus }}',
                                                                               '{{ domain.vnc_port }}',
                                                                               '{{ node.ip }}',
-                                                                              '{{ domain.proxy_port}}')">
+                                                                              '{{ domain.proxy_port}}',
+                                                                              '{{ domain.mac_address}}')">
                             {{ domain.name }} {{ domain.uuid }}
                             </a>
                         </li>
@@ -128,9 +195,10 @@
         document.addEventListener("mouseup", () => {
             isDragging = false;
             document.body.style.cursor = "default";
+
         });
 
-        function loadVM(vmName, vmUUID, status, ramUsed, ramMax, vcpus, vncport, node_ip, domain_proxy_port) {
+        function loadVM(vmName, vmUUID, status, ramUsed, ramMax, vcpus, vncport, node_ip, domain_proxy_port, macaddress) {
             const vmContent = document.getElementById('vm-content');
             
             // Générer le contenu dynamique pour la VM
@@ -141,6 +209,7 @@
                 <p  id="vm-ramused"><strong>RAM Utilisée:</strong> ${ramUsed/1024} MB / <strong>RAM Maximale:</strong> ${ramMax/1024} MB</p>
                 <p  id="vm-vcpus"  ><strong>Nombre de vCPUs:</strong> ${vcpus}</p>
                 <p  id="vm-vncport"><strong>VNC Port:</strong> ${vncport}</p>
+                <p  id="vm-macaddress"><strong>MAC Address:</strong> ${macaddress}</p>
                 
                 <div>
                     <button onclick="manageVM('${vmUUID}', 'create_domain')" class="btn btn-success">Démarrer</button>
@@ -154,6 +223,74 @@
                 </div>
             `;
         }
+        
+        function fetchStatus() {
+            fetch('/dashboard/refresh/') 
+                .then(response => response.json())
+                .then(data => {
+                    updateUI(data);
+                })
+                .catch(error => console.error('Erreur lors de la récupération des données:', error));
+        }
+
+        function updateUI(data) {
+
+            // Rafraichissement du bandeau de gauche
+            data.nodes.forEach(node => {
+                current_node = document.getElementById(`node-${node.name}`)
+                future_node  = ''
+                node.domains.forEach(domain => {
+                    future_node += `
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="loadVM('${domain.name}', 
+                                                                              '${domain.uuid}', 
+                                                                              '${domain.status}', 
+                                                                              '${domain.current_ram}', 
+                                                                              '${domain.max_ram}', 
+                                                                              '${domain.vcpus}',
+                                                                              '${domain.vnc_port}',
+                                                                              '${node.ip}',
+                                                                              '${domain.proxy_port}',
+                                                                              '${domain.mac_address}')">
+                            ${domain.name} ${domain.uuid}
+                            </a>
+                        </li>
+                    `;
+                });
+                current_node.innerHTML = future_node
+
+            });
+
+            // Rafraichissement de la page de vm
+            data.nodes.forEach(node => {
+                node.domains.forEach(domain => {
+                    const uuid    = document.getElementById('vm-uuid');  
+                    if ( uuid.innerText == domain.uuid )
+                    {
+                        const name       = document.getElementById('vm-name');   
+                        const status     = document.getElementById('vm-status'); 
+                        const ramused    = document.getElementById('vm-ramused');
+                        const vcpus      = document.getElementById('vm-vcpus');  
+                        const vncport    = document.getElementById('vm-vncport');
+                        const macaddress = document.getElementById('vm-macaddress');
+                        const iframevnc = document.getElementById('vnc-console');
+                        
+                        name   .innerHTML = `<h6 id="vm-name"   >Détails de ${domain.name}</h6>`,
+                        status .innerHTML = `<p  id="vm-status" ><strong>Status:</strong> ${domain.status}</p>`,
+                        ramused.innerHTML = `<p  id="vm-ramused"><strong>RAM Utilisée:</strong> ${domain.current_ram/1024} MB / <strong>RAM Maximale:</strong> ${domain.max_ram/1024} MB</p>`,
+                        vcpus  .innerHTML = `<p  id="vm-vcpus"  ><strong>Nombre de vCPUs:</strong> ${domain.vcpus}</p>`,
+                        vncport.innerHTML = `<p  id="vm-vncport"><strong>VNC Port:</strong> ${domain.vnc_port}</p>`
+                        macaddress.innerHTML = `<p  id="vm-macaddress"><strong>MAC:</strong> ${domain.mac_address}</p>`
+                    
+                        if (!(iframevnc.innerHTML.includes(`:${domain.proxy_port}`)))
+                        {
+                            iframevnc.innerHTML = `<iframe id="vnc-console" src="http://${node.ip}:${domain.proxy_port}/vnc.html" style="width: 100%; height: 500px; border: none;"></iframe>`
+                        }
+                    } 
+                });
+            });
+        }
+
         function getCookie(name) {
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
@@ -170,7 +307,18 @@
             return cookieValue;
         }
 
+        // Fonction pour afficher le popup de chargement
+        function showLoadingPopup() {
+            document.getElementById("loading-popup").style.display = "flex";
+        }
+
+        // Fonction pour masquer le popup de chargement
+        function hideLoadingPopup() {
+            document.getElementById("loading-popup").style.display = "none";
+        }
+
         function manageVM(uuid_to_act, action) {
+            showLoadingPopup(); 
             if (action != 'create_domain' && action != 'restart_domain_unblock' && action != 'destroy_domain')
             {
                 alert(`Action invalide:"${action}"`);
@@ -188,50 +336,59 @@
             })
             .catch(error => {
                 console.error(`Erreur lors de l'action "${action}":`, error);
-            });
-        }
-    </script>
-    <script>
-        function fetchStatus() {
-        fetch('/dashboard/refresh/') 
-            .then(response => response.json())
-            .then(data => {
-                updateUI(data);
             })
-            .catch(error => console.error('Erreur lors de la récupération des données:', error));
-    }
+            .finally(() => {
+                fetchStatus();
+                hideLoadingPopup(); 
+            });
 
-    function updateUI(data) {
-        console.log(data)
+        }
+        setInterval(fetchStatus, 10000);
+    </script>
 
-        data.nodes.forEach(node => {
-            node.domains.forEach(domain => {
-                const uuid    = document.getElementById('vm-uuid');  
-                if ( uuid.innerText == domain.uuid )
-                {
-                    const name    = document.getElementById('vm-name');   
-                    const status  = document.getElementById('vm-status'); 
-                    const ramused = document.getElementById('vm-ramused');
-                    const vcpus   = document.getElementById('vm-vcpus');  
-                    const vncport = document.getElementById('vm-vncport');
-                    const iframevnc = document.getElementById('vnc-console');
-                    
-                    name   .innerHTML = `<h6 id="vm-name"   >Détails de ${domain.name}</h6>`,
-                    status .innerHTML = `<p  id="vm-status" ><strong>Status:</strong> ${domain.status}</p>`,
-                    ramused.innerHTML = `<p  id="vm-ramused"><strong>RAM Utilisée:</strong> ${domain.current_ram/1024} MB / <strong>RAM Maximale:</strong> ${domain.max_ram/1024} MB</p>`,
-                    vcpus  .innerHTML = `<p  id="vm-vcpus"  ><strong>Nombre de vCPUs:</strong> ${domain.vcpus}</p>`,
-                    vncport.innerHTML = `<p  id="vm-vncport"><strong>VNC Port:</strong> ${domain.vnc_port}</p>`
-                
-                    if (!(iframevnc.innerHTML.includes(`:${domain.proxy_port}`)))
-                    {
-                        iframevnc.innerHTML = `<iframe id="vnc-console" src="http://${node.ip}:${domain.proxy_port}/vnc.html" style="width: 100%; height: 500px; border: none;"></iframe>`
-                    }
-                } 
+    <script>
+        document.getElementById("vm-form").addEventListener("submit", function (event) {
+        event.preventDefault(); // Empêche le rechargement de la page
+
+        // Récupérer les données du formulaire
+        const vmName = document.getElementById("domain-name").value;
+        const nodeId = document.getElementById("node-select").value;
+        const ramAmount  = document.getElementById("domain-memory").value;
+        const sizeAmount = document.getElementById("domain-size").value;
+        const vcpus      = document.getElementById("domain-vcpus").value;
+
+        // Envoi des données au serveur
+        fetch("/dashboard/create_vm/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"), // Inclure le CSRF token pour Django
+            },
+            body: JSON.stringify({
+                name        : vmName,
+                node_id     : nodeId,
+                memory      : ramAmount,
+                disk_size   : sizeAmount,
+                vcpus_number: vcpus
+            }),
+            })
+            .then((response) => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error("Erreur lors de la création de la VM.");
+                }
+            })
+            .then((data) => {
+                alert(`VM "${vmName}" créée avec succès !`);
+                const modal = bootstrap.Modal.getInstance(document.getElementById("createVmModal"));
+                modal.hide(); // Fermer le modal après soumission réussie
+            })
+            .catch((error) => {
+                console.error(error);
+                alert("Erreur : " + error.message);
             });
         });
-    }
-
-    setInterval(fetchStatus, 10000);
     </script>
   </body>
 </html>

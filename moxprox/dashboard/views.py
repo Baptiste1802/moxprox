@@ -5,6 +5,9 @@ from .models import DashboardDatacenter, DashboardNode, DashboardDomain
 from django.http import JsonResponse
 from .back.constant import Protocol
 from .back.node import Node
+from django_mysql.exceptions import TimeoutError
+from django_mysql.locks import Lock
+
 import platform
 import json
 import ast
@@ -12,29 +15,39 @@ import threading
 
 # Create your views here.
 def index(request):
-        local_node = Node.factory("127.0.0.1", Protocol.LOCALHOST, "root", "root")
-        local_node.remote_update()
+        local_node    = None
+        remote_node   = None
+        remote_domain = None
 
-        current_node = platform.node()
+        try:
+                with Lock("cloud_lock", acquire_timeout=5.0):
+                        local_node = Node.factory("127.0.0.1", Protocol.LOCALHOST, "root", "root")
+                        local_node.remote_update()
 
-        remote_dc = (DashboardDatacenter.objects.all())[0]
-        remote_node = DashboardNode.objects.filter(datacenter_id=remote_dc.id)
-        remote_domain = DashboardDomain.objects.all()       
+                        remote_dc = (DashboardDatacenter.objects.all())[0]
+                        remote_node = DashboardNode.objects.filter(datacenter_id=remote_dc.id)
+                        remote_domain = DashboardDomain.objects.all()       
+        except TimeoutError:
+                print("Could not get the lock")
 
         context = {"nodes" : remote_node, "domains": remote_domain}
         return render(request, "dashboard/index.html", context)
 
 def refresh(request):
-        print("refresh")
-        local_node = Node.factory("127.0.0.1", Protocol.LOCALHOST, "root", "root")
-        print("before update")
-        local_node.remote_update()
-        print("after update")
+        local_node    = None
+        remote_node   = None
+        remote_domain = None
 
-        remote_dc = (DashboardDatacenter.objects.all())[0]
-        remote_node = DashboardNode.objects.filter(datacenter_id=remote_dc.id)
-        remote_domain = DashboardDomain.objects.all()
-        print("after querying")
+        try:
+                with Lock("cloud_lock", acquire_timeout=2.0):
+                        local_node = Node.factory("127.0.0.1", Protocol.LOCALHOST, "root", "root")
+                        local_node.remote_update()
+
+                        remote_dc     = (DashboardDatacenter.objects.all())[0]
+                        remote_node   = DashboardNode.objects.filter(datacenter_id=remote_dc.id)
+                        remote_domain = DashboardDomain.objects.all()
+        except TimeoutError:
+                print("Could not get the lock")
 
         data = {
         "nodes": [
@@ -44,15 +57,16 @@ def refresh(request):
                 "ip": node.ip,
                 "domains": [
                         {
-                        "id": domain.id,
-                        "name": domain.name,
-                        "uuid": str(domain.uuid),
-                        "status": domain.status,
+                        "id"         : domain.id,
+                        "name"       : domain.name,
+                        "uuid"       : str(domain.uuid),
+                        "status"     : domain.status,
                         "current_ram": domain.current_ram,
-                        "max_ram": domain.max_ram,
-                        "vcpus": domain.vcpus,
-                        "vnc_port": domain.vnc_port,
-                        "proxy_port": domain.proxy_port,
+                        "max_ram"    : domain.max_ram,
+                        "vcpus"      : domain.vcpus,
+                        "vnc_port"   : domain.vnc_port,
+                        "proxy_port" : domain.proxy_port,
+                        "mac_address": domain.mac_address
                         }
                         for domain in remote_domain if domain.node_id == node.id
                 ]
@@ -63,14 +77,18 @@ def refresh(request):
         
         return JsonResponse(data)
 
-def start_domain(request):
+def manage_domain(request):
         if request.method == "POST":
                 dict_body = ast.literal_eval((request.body).decode("UTF-8"))
                 domain_uuid = dict_body['uuid']
                 action = dict_body['action']
-                manage_domain_back(domain_uuid, action)
-                # thread = threading.Thread(target=manage_domain_back, daemon=True, args=(domain_uuid, 'create_domain'))
-                # thread.start()
+
+                try:
+                        with Lock("cloud_lock", acquire_timeout=2.0):
+                                manage_domain_back(domain_uuid, action)
+                except TimeoutError:
+                        print("Could not get the lock")
+                        return JsonResponse({"error": "Request not POST"}, status=400)
 
                 return JsonResponse({"success": f"Domaine {domain_uuid} démarré"})
         return JsonResponse({"error": "Request not POST"}, status=400)
@@ -83,4 +101,17 @@ def manage_domain_back(domain_uuid, action):
         ip = node_owner_of_domain.ip
         node_owner_of_domain = None
         Node.manage_domain(ip, domain_uuid, action)
-        
+
+def create_vm(request):
+        if request.method == "POST":
+                dict_body = ast.literal_eval((request.body).decode("UTF-8"))
+                name         = dict_body["name"        ]
+                node_id      = dict_body["node_id"     ]
+                memory       = int(dict_body["memory"      ])
+                disk_size    = dict_body["disk_size"   ]
+                vcpus_number = dict_body["vcpus_number"]
+
+                if Node.new_vm(name, node_id, memory, disk_size, vcpus_number):
+                        refresh(None)
+                        return JsonResponse({"success": "VM in creation"})
+        return JsonResponse({"error": "An error occured while creation of the VM"})
