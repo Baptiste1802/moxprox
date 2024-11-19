@@ -7,6 +7,7 @@ from .back.constant import Protocol
 from .back.node import Node
 from django_mysql.exceptions import TimeoutError
 from django_mysql.locks import Lock
+from django.views.decorators.csrf import csrf_exempt
 
 import platform
 import json
@@ -14,6 +15,7 @@ import ast
 import threading
 
 # Create your views here.
+@csrf_exempt
 def index(request):
         local_node    = None
         remote_node   = None
@@ -33,6 +35,7 @@ def index(request):
         context = {"nodes" : remote_node, "domains": remote_domain}
         return render(request, "dashboard/index.html", context)
 
+@csrf_exempt
 def refresh(request):
         local_node    = None
         remote_node   = None
@@ -77,6 +80,7 @@ def refresh(request):
         
         return JsonResponse(data)
 
+@csrf_exempt
 def manage_domain(request):
         if request.method == "POST":
                 dict_body = ast.literal_eval((request.body).decode("UTF-8"))
@@ -93,6 +97,7 @@ def manage_domain(request):
                 return JsonResponse({"success": f"Domaine {domain_uuid} démarré"})
         return JsonResponse({"error": "Request not POST"}, status=400)
 
+@csrf_exempt
 def manage_domain_back(domain_uuid, action):
         if not domain_uuid:
                 return JsonResponse({"error": "UUID manquant"}, status=400)
@@ -102,6 +107,7 @@ def manage_domain_back(domain_uuid, action):
         node_owner_of_domain = None
         Node.manage_domain(ip, domain_uuid, action)
 
+@csrf_exempt
 def create_vm(request):
         if request.method == "POST":
                 dict_body = ast.literal_eval((request.body).decode("UTF-8"))
