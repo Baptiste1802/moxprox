@@ -10,18 +10,12 @@ class Domain:
 
     def __init__(self, vir_domain=None, conn=None):
         self.virtuel_domain = vir_domain
-        print("before name")
         self.name           = self.virtuel_domain.name()
         self.conn           = conn
-        print("before threading")
         self.status_event   = threading.Event()
-        print("before getting uuid")
         self.uuid           = self.virtuel_domain.UUIDString()
-        print("before getting vnc")
         self.vnc_port       = self.get_vnc_port()
-        print("before getting proxy")
         self.proxy_port     = Domain.determine_proxy_port(self.vnc_port)
-        print("before mac")
         self.mac_address    = self.get_mac_address()
 
     @staticmethod

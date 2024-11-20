@@ -15,15 +15,18 @@ import os
 import subprocess
 
 class Node:
-    def __init__(self, conn):
+    def __init__(self, conn, local=True, name=""):
         print(conn)
         self.conn    = conn
         self.ip      = self.get_node_ip()
         self.domains = []
-        print("before load")
         self.load_domain()
-        print("after load")
-        self.name = platform.node()
+        self.local = local
+        if self.local == True:
+            self.name = platform.node()
+        else:
+            self.name = name
+        
 
     @staticmethod
     def run_websockify(vnc_port, websocket_port, host="0.0.0.0"):
@@ -51,7 +54,7 @@ class Node:
                 dd = DashboardDomain(id=local_domain.get_id(), name=local_domain.name, uuid=local_domain.uuid, status=local_domain.get_status(), max_ram=local_domain.get_max_memory(), current_ram=local_domain.get_ram_info(), vcpus=local_domain.get_vcpu(), vnc_port=local_domain.get_vnc_port(), proxy_port=local_domain.proxy_port, node_id=remote_current_node.id, ip="")
                 dd.save()
 
-                if f"{local_domain.proxy_port}" in Domain.websockify_pid:
+                if self.local and  f"{local_domain.proxy_port}" in Domain.websockify_pid:
                     try:        # Ajoutez votre logique ici
 
                         Domain.websockify_pid[f"{local_domain.proxy_port}"]["proxy"].terminate()
@@ -69,9 +72,9 @@ class Node:
                     delete = False
             if delete:
                 remote_domain.delete()
-                print("DELETE")
-                Domain.websockify_pid[f"{remote_domain.proxy_port}"]["proxy"].terminate()
-                Domain.websockify_pid.pop(f"{remote_domain.proxy_port}")
+                if self.local:
+                    Domain.websockify_pid[f"{remote_domain.proxy_port}"]["proxy"].terminate()
+                    Domain.websockify_pid.pop(f"{remote_domain.proxy_port}")
 
 
         remote_current_domain = DashboardDomain.objects.filter(node_id=remote_current_node.id)
@@ -93,12 +96,13 @@ class Node:
                         )
 
         # Mise à jour des proxys pour ceux qui n'ont pas était créer ou supprimer, mais qui n'existe pas
-        for local_domain in self.domains:
-            if f"{local_domain.proxy_port}" not in Domain.websockify_pid and local_domain.get_status_bool():
-                Domain.websockify_pid[f"{local_domain.proxy_port}"] = dict()
-                Domain.websockify_pid[f"{local_domain.proxy_port}"]["vnc"  ] = local_domain.vnc_port
-                Domain.websockify_pid[f"{local_domain.proxy_port}"]["proxy"] = Process(target=Node.run_websockify, args=(local_domain.vnc_port, local_domain.proxy_port, "0.0.0.0"))
-                Domain.websockify_pid[f"{local_domain.proxy_port}"]["proxy"].start()
+        if self.local:
+            for local_domain in self.domains:
+                if f"{local_domain.proxy_port}" not in Domain.websockify_pid and local_domain.get_status_bool():
+                    Domain.websockify_pid[f"{local_domain.proxy_port}"] = dict()
+                    Domain.websockify_pid[f"{local_domain.proxy_port}"]["vnc"  ] = local_domain.vnc_port
+                    Domain.websockify_pid[f"{local_domain.proxy_port}"]["proxy"] = Process(target=Node.run_websockify, args=(local_domain.vnc_port, local_domain.proxy_port, "0.0.0.0"))
+                    Domain.websockify_pid[f"{local_domain.proxy_port}"]["proxy"].start()
 
     def end_node(self):
         for domain in self.domains:
@@ -167,7 +171,7 @@ class Node:
         return urlparse(self.conn.getURI()).hostname
 
     @staticmethod
-    def factory(ip, protocol, user="", password=""):
+    def factory(ip, protocol, user="", password="", local=True, name=""):
         strAuthentication = ""
 
         match protocol:
@@ -188,11 +192,11 @@ class Node:
         if not conn:
             raise Exception("Could not connect to node")
 
-        return Node(conn)
+        return Node(conn, local, name)
 
     @staticmethod
     def manage_domain(node_ip, domain_uuid, action):
-        worker_node = Node.factory(node_ip, Protocol.SECURESHELL)
+        worker_node = Node.factory(node_ip, Protocol.SECURESHELL, local=False)
         for domain in worker_node.domains:
             if str(domain_uuid) == domain.uuid:
                 match action:
@@ -205,6 +209,9 @@ class Node:
 
     @staticmethod
     def new_vm(name, node_id, memory, disk_size, vcpus_number):
+        if len(DashboardDomain.objects.filter(name=name)) > 0:
+            print("Error VM")
+            return False
 
         mac_address_is_okay = False
         while not mac_address_is_okay:
@@ -218,7 +225,6 @@ class Node:
         file_exist = True
         new_uuid   = None
         memory = memory*1024
-        print(memory)
         while file_exist:
             new_uuid = uuid.uuid4()
             path     = f"/srv/kvmnfsshare/qcow/{str(new_uuid)}.qcow2"
@@ -244,6 +250,41 @@ class Node:
         
         conn.close()
         return True
+
+    @staticmethod
+    def migrate_vm(source_node, dest_node, name):
+        conn = None
+        try:
+            conn = libvirt.open(f'qemu+ssh://{source_node}/system')
+        except libvirt.libvirtError as e:
+            print(repr(e), file=sys.stderr)
+            return False, repr(e)
+        
+        dest_conn = None
+        try:
+            dest_conn = libvirt.open(f'qemu+ssh://{dest_node}/system')
+        except libvirt.libvirtError as e:
+            print(repr(e), file=sys.stderr)
+            return False, repr(e)
+        
+        dom = None
+        try:
+            dom = conn.lookupByName(name)
+        except libvirt.libvirtError as e:
+            print(repr(e), file=sys.stderr)
+            return False, repr(e)
+
+        new_dom = None
+        try:
+            new_dom = dom.migrate(dest_conn, libvirt.VIR_MIGRATE_LIVE|libvirt.VIR_MIGRATE_UNSAFE, None, None, 0)
+        except libvirt.libvirtError as e:
+            print(repr(e), file=sys.stderr)
+            return False, repr(e)
+                
+        dest_conn.close()
+        conn.close()
+
+        return True, ""
 
     @staticmethod
     def generate_xml(name, memory, vcpus_number, new_uuid, mac_address):

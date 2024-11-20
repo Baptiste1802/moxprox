@@ -35,8 +35,13 @@
         </a>
         <ul class="nav nav-pills">
           <li class="nav-item">
-            <button id="show-form-btn" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createVmModal">
+            <button id="show-form-btn" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#createVmModal">
                 Créer une VM
+            </button>
+          </li>
+          <li>
+            <button id="show-form-btn" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#migrateVmModal">
+                Migrer une VM
             </button>
           </li>
         </ul>
@@ -72,7 +77,7 @@
                   <label for="node-select" class="form-label">Hyperviseur</label>
                   <select class="form-select" id="node-select" required>
                     {% for node in nodes %}
-                    <option value="{{ node.ip }}">{{ node.name }}</option>
+                    <option value="{{ node.name }}">{{ node.name }}</option>
                     {% endfor %}
                   </select>
                 </div>
@@ -81,6 +86,49 @@
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
               <button type="submit" form="vm-form" class="btn btn-success">Créer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Formulaire migration VM-->
+    <div class="modal fade" id="migrateVmModal" tabindex="-1" aria-labelledby="migrateVmModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="migrateVmModalLabel">Migrer une VM</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <form id="migrate-form">
+                <div class="mb-3" >
+                    <label for="node-select" class="form-label">Domaine à migrer</label>
+                    <select class="form-select" id="migrate_domain_and_node" required>
+                      {% for node in nodes %}
+                        {% for domain in domains %}
+                            {% if domain.node_id == node.id %}
+                      <option value="{{ node.name }}|{{ domain.name }}">{{ domain.name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                      {% endfor %}
+                    </select>
+                  </div>
+
+                <!-- Ajout des domaines selon le choix de l'hyperviseur source -->
+
+                  <div class="mb-3">
+                    <label for="node-select" class="form-label">Hyperviseur destination</label>
+                    <select class="form-select" id="migrate_dest_node" required>
+                      {% for node in nodes %}
+                      <option value="{{ node.name }}">{{ node.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+              </form>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+              <button type="submit" form="migrate-form" class="btn btn-success">Migrer</button>
             </div>
           </div>
         </div>
@@ -234,6 +282,8 @@
         }
 
         function updateUI(data) {
+            migrate_domain_and_node = document.getElementById("migrate_domain_and_node");
+            future_migrate = '';
 
             // Rafraichissement du bandeau de gauche
             data.nodes.forEach(node => {
@@ -256,16 +306,17 @@
                             </a>
                         </li>
                     `;
+                      future_migrate += `<option value="${ node.name }|${ domain.name }">${ domain.name }</option>`;
                 });
-                current_node.innerHTML = future_node
-
+                current_node.innerHTML = future_node;
             });
+            migrate_domain_and_node.innerHTML = future_migrate;
 
             // Rafraichissement de la page de vm
             data.nodes.forEach(node => {
                 node.domains.forEach(domain => {
                     const uuid    = document.getElementById('vm-uuid');  
-                    if ( uuid.innerText == domain.uuid )
+                    if ( uuid != null && uuid.innerText == domain.uuid )
                     {
                         const name       = document.getElementById('vm-name');   
                         const status     = document.getElementById('vm-status'); 
@@ -344,51 +395,103 @@
 
         }
         setInterval(fetchStatus, 10000);
-    </script>
 
-    <script>
         document.getElementById("vm-form").addEventListener("submit", function (event) {
-        event.preventDefault(); // Empêche le rechargement de la page
+            event.preventDefault(); // Empêche le rechargement de la page
+            showLoadingPopup();
 
-        // Récupérer les données du formulaire
-        const vmName = document.getElementById("domain-name").value;
-        const nodeId = document.getElementById("node-select").value;
-        const ramAmount  = document.getElementById("domain-memory").value;
-        const sizeAmount = document.getElementById("domain-size").value;
-        const vcpus      = document.getElementById("domain-vcpus").value;
+            // Récupérer les données du formulaire
+            const vmName = document.getElementById("domain-name").value;
+            const nodeId = document.getElementById("node-select").value;
+            const ramAmount  = document.getElementById("domain-memory").value;
+            const sizeAmount = document.getElementById("domain-size").value;
+            const vcpus      = document.getElementById("domain-vcpus").value;
 
-        // Envoi des données au serveur
-        fetch("/dashboard/create_vm/", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": getCookie("csrftoken"), // Inclure le CSRF token pour Django
-            },
-            body: JSON.stringify({
-                name        : vmName,
-                node_id     : nodeId,
-                memory      : ramAmount,
-                disk_size   : sizeAmount,
-                vcpus_number: vcpus
-            }),
-            })
-            .then((response) => {
-                if (response.ok) {
-                    return response.json();
-                } else {
-                    throw new Error("Erreur lors de la création de la VM.");
-                }
-            })
-            .then((data) => {
-                alert(`VM "${vmName}" créée avec succès !`);
-                const modal = bootstrap.Modal.getInstance(document.getElementById("createVmModal"));
-                modal.hide(); // Fermer le modal après soumission réussie
-            })
-            .catch((error) => {
-                console.error(error);
-                alert("Erreur : " + error.message);
+            // Envoi des données au serveur
+            fetch("/dashboard/create_vm/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCookie("csrftoken"), 
+                },
+                body: JSON.stringify({
+                    name        : vmName,
+                    node_id     : nodeId,
+                    memory      : ramAmount,
+                    disk_size   : sizeAmount,
+                    vcpus_number: vcpus
+                }),
+                })
+                .then((response) => {
+                    if (response.ok) {
+                        return response.json();
+                    } else {
+                        throw new Error("Erreur lors de la création de la VM.");
+                    }
+                })
+                .then((data) => {
+                    if (data.state == true) alert(data.success);
+                    else                    alert(data.error  );
+                    const modal = bootstrap.Modal.getInstance(document.getElementById("createVmModal"));
+                    modal.hide(); // Fermer le modal après soumission réussie
+                })
+                .catch((error) => {
+                    console.error(error);
+                    alert("Erreur : " + error.message);
+                }).finally(() => {
+                    hideLoadingPopup();
+                });
             });
+
+        document.getElementById("migrate-form").addEventListener("submit", function (event) {
+            event.preventDefault();
+
+
+            const domain_and_node = document.getElementById("migrate_domain_and_node").value;
+            const dest_node       = document.getElementById("migrate_dest_node"      ).value;
+            
+            source = domain_and_node.split("|");
+            
+            const name        = source[1];
+            const source_node = source[0];
+
+            if (source_node != dest_node)
+            {
+                showLoadingPopup();
+
+                fetch("/dashboard/migrate_vm/", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": getCookie("csrftoken")
+                    },
+                    body: JSON.stringify({
+                        name       : name       ,
+                        source_node: source_node,
+                        dest_node  : dest_node
+                    }),
+                }).then((response) => {
+                    if (response.ok) { return response.json(); }
+                    throw new Error("Erreur lors de la migration");
+                }).then((data) => {
+                    if (data.state == true) alert(data.success);
+                    else                    alert(data.error  );
+                    const modal = bootstrap.Modal.getInstance(document.getElementById("migrateVmModal"));
+                    modal.hide();
+                }).then((error) => {
+                    console.log(error);
+                    alert("Erreur" + error.message);
+                }).finally(() => {
+                    hideLoadingPopup();
+                });
+            }
+            else
+            {
+                alert(`Hyperviseur source = Hyperviseur destination\n ${source_node} = ${dest_node}`);
+            }
+            
         });
+
     </script>
   </body>
 </html>
